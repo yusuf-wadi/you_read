@@ -109,7 +109,7 @@ def get_frame(vID, line):
     end = format_seconds(end)
     print(start, end)
     # run batch file capture.bat with arguments
-    subprocess.run(["capture.bat", vID, start, end])
+    subprocess.run(["src/capture.bat", vID, start, end])
 
 def write_booklet(article, transcript):
     
