@@ -96,7 +96,7 @@ def main():
                 text += line['text'] + "\n"
             article = call_assistant(text)
             # output the booklet
-            write_booklet(article, transcript)
+            write_booklet(article, transcript, vID)
         
         st.markdown("---")
         st.success("🎉 Done!")
@@ -109,9 +109,60 @@ def get_frame(vID, line):
     end = format_seconds(end)
     print(start, end)
     # run batch file capture.bat with arguments
-    subprocess.run(["src/capture.bat", vID, start, end])
+    subprocess.run([f"src\capture.bat", vID, start, end])
+    # get most recent image in the output folder *.jpg
+    image_name = ""
+    with open(fr"output\output_{vID}.txt") as f:
+        frames = f.readlines()
+        image_name =  frames[-1].strip()
+    # open the image
+    return Image.open(fr"output\{image_name}.jpg")
+        
+def write_booklet(article, transcript, vID):
+    """
+    args: article(str), transcript(list), vID(str)
+    
+    compares between the response from the assistant and the transcript
+    approximates which frames to grab when prompted with [IMAGE_HERE] based on the transcript
+    """
+    
+    # split the texts into words
+    article_words = article.split(" ")
+    # we need to know what time the word is said in the video
+    # we can use the length of the article to approximate the time
+    article_length = len(article_words)
+    # get the length of the transcript
+    transcript_length = len(transcript)
+    # get the ratio of the article to the transcript
+    ratio = article_length/transcript_length
+    
+    sentence = ""
+    image_amount = 0
+    
+    for i in range(article_length):
+        # add the word to the sentence
+        
+        # if the word ends with a punctuation, write the sentence to the booklet
 
-def write_booklet(article, transcript):
+        # if the word is [IMAGE_HERE]
+        if "[IMAGE_HERE]" in article_words[i] or "[Image]" in article_words[i]:
+            # get the line from the transcript
+            line = transcript[int(i/ratio)]
+            # get the frame from the video
+            # limit the images, but cant just be first 5
+            if image_amount < 5 and not article_words[i-1] in ["[Image]","[IMAGE_HERE]", ""]:
+                image = get_frame(vID, line)
+                image_amount += 1
+                st.image(image, caption=f"Frame {i+1}", use_column_width=True)
+        else:
+            sentence += article_words[i] + " "
+            if article_words[i][-1] in [".", "!", "?"]:
+                st.text(sentence)
+                sentence = ""
+            
+            
+    
+    
     
 def format_seconds(seconds):
     return f"{int(seconds//3600):02d}:{int((seconds%3600)//60):02d}:{int(seconds%60):02d}"
