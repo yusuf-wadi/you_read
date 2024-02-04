@@ -21,9 +21,23 @@ import random
 def call_gpt(prompt):
     #st.session_state["OPENAI_API_KEY"] = cfg("OPENAI_API_KEY")
     try:
-        chat = OpenAIChat(model_name='gpt-3.5-turbo', client=None, openai_api_key=st.session_state.get("OPENAI_API_KEY"))
-        response = chat.generate(prompt)
-        return response.generations[0][0].text
+        client = OpenAI(api_key=st.session_state.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(model = "gpt-3.5-turbo-16k-0613", messages = [{"role" : "user", "content" : prompt}])
+        return response.choices[0].message.content
+    except AuthenticationError:
+        st.error("⚠️ Please set the correct key in the sidebar -> see help icon")
+        return ""
+    except ValidationError:
+        st.error("⚠️ Please set the correct key in the sidebar -> see help icon")
+        return ""
+    
+def stream_gpt(prompt):
+    #st.session_state["OPENAI_API_KEY"] = cfg("OPENAI_API_KEY")
+    try:
+        client = OpenAI(api_key=st.session_state.get("OPENAI_API_KEY"))
+        response = client.chat.completions.create(model = "gpt-3.5-turbo-16k-0613", messages = [{"role" : "user", "content" : prompt}], stream = True)
+        # return stream object
+        return response
     except AuthenticationError:
         st.error("⚠️ Please set the correct key in the sidebar -> see help icon")
         return ""
@@ -78,6 +92,8 @@ def main():
     button = st.button("Generate Booklet") 
     # video frames grabbed
     frame_count = 0
+    # chunk number
+    chunk_num = 0
     # only generate when user presses submit
     if button and content and "youtube.com" in content:
         # get video ID
@@ -94,9 +110,26 @@ def main():
         if transcript:
             for line in transcript:
                 text += line['text'] + "\n"
-            article = call_assistant(text)
-            # output the booklet
-            write_booklet(article, transcript, vID)
+            #article = call_assistant(text)
+            # moving away from assistant api
+            # form prompt
+            prompt = f"Given a text, write the text keeping details. IMPORTANT: add [IMAGE_HERE] to denote where an image would be in the article:\n-----\ntext: {text}\n-----\nbooklet:"
+            # article = call_gpt(prompt)
+            # # write article to debug log
+            # with open("debug.log", "w") as f:
+            #     f.write(article)
+            # # output the booklet
+            # write_booklet(article, transcript, vID)
+            stream = stream_gpt(prompt)
+            
+            for chunk in stream:
+                if chunk.choices[0].delta.content is not None:
+                    chunk_num += 1
+                    # write to debug
+                    with open("debug.log", "a") as f:
+                        f.write(chunk.choices[0].delta.content)
+                    # output the booklet
+                    write_booklet(chunk.choices[0].delta.content, transcript, vID, chunk_num)
         
         st.markdown("---")
         st.success("🎉 Done!")
@@ -109,7 +142,7 @@ def get_frame(vID, line):
     end = format_seconds(end)
     print(start, end)
     # run batch file capture.bat with arguments
-    subprocess.run([f"src\capture.bat", vID, start, end])
+    subprocess.run([fr"src\capture.bat", vID, start, end])
     # get most recent image in the output folder *.jpg
     image_name = ""
     with open(fr"output\output_{vID}.txt") as f:
@@ -118,7 +151,7 @@ def get_frame(vID, line):
     # open the image
     return Image.open(fr"output\{image_name}.jpg")
         
-def write_booklet(article, transcript, vID):
+def write_booklet(article, transcript, vID, chunk_num):
     """
     args: article(str), transcript(list), vID(str)
     
@@ -150,15 +183,15 @@ def write_booklet(article, transcript, vID):
             line = transcript[int(i/ratio)]
             # get the frame from the video
             # limit the images, but cant just be first 5
-            if image_amount < 5 and not article_words[i-1] in ["[Image]","[IMAGE_HERE]", ""]:
+            if image_amount < 5:
                 image = get_frame(vID, line)
                 image_amount += 1
                 st.image(image, caption=f"Frame {i+1}", use_column_width=True)
         else:
             sentence += article_words[i] + " "
-            if article_words[i][-1] in [".", "!", "?"]:
-                st.text(sentence)
-                sentence = ""
+            if "." in article_words[i]:
+                st.write(sentence)
+                sentence = ""   
             
             
     
