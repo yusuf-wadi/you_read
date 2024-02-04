@@ -1,0 +1,7 @@
+langchain
+streamlit
+openai
+pydantic
+streamlit-authenticator
+deta == 1.1.0
+python-decouple
